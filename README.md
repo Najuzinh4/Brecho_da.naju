@@ -1,40 +1,63 @@
-# brechó da najú ★ PDV
+# Brechó da Najú · PDV ★
 
-Sistema de ponto de venda + gestão de estoque para a feira.
+Sistema de ponto de venda para uso na feira — vende peça por peça, controla estoque, cadastra peças e fornecedoras, e fecha o dia com o **pix de cada fornecedora** (inclui PDF individual pra mandar pra cada uma).
+
+---
 
 ## Como rodar
 
+> Precisa ter **Python 3.10+** instalado.
+
 ```bash
-# 1. instalar dependências (só na primeira vez)
+# 1. criar e ativar o ambiente virtual
+python -m venv .venv
+.venv\Scripts\activate        # Windows
+source .venv/bin/activate     # Mac / Linux
+
+# 2. instalar dependências
 pip install -r requirements.txt
 
-# 2. rodar o app
+# 3. rodar
 python app.py
-
-# 3. abrir no navegador
-# http://localhost:5000
 ```
 
-## O que o app faz
+Abre em **<http://localhost:5000>**
 
-- **PDV**: digita o código da peça → mostra info → dá baixa na venda
-- **Estoque**: visualiza todas as peças, filtra por status/fornecedora
-- **Cadastro**: adiciona peças com código, descrição, fornecedora e % de comissão
-- **Relatório**: mostra total vendido, quanto fica pra Najú e **quanto enviar no pix pra cada fornecedora**
+O banco (`brecho.db`) é criado e populado com dados de exemplo na primeira vez automaticamente.
 
-## Claude AI (precisa de internet)
+### Usar no iPad na feira
 
-No PDV e no cadastro tem botões pra usar o Claude:
-- Gerar legenda pro Instagram
-- Sugerir preço baseado na descrição
-- Auto-categorizar a peça
+Com notebook e iPad na **mesma rede Wi-Fi**, o terminal mostra o IP:
+
+```txt
+Running on http://192.168.x.x:5000
+```
+
+Acessa esse endereço no iPad.
+
+---
+
+## As 4 telas
+
+- **PDV** `/` — busca peça por código/descrição → seleciona → "DAR BAIXA"
+- **Estoque** `/estoque` — tabela com filtros: categoria, fornecedora, status
+- **Cadastrar** `/cadastro` — cadastro de nova **peça** ou nova **fornecedora**
+- **Fechamento** `/relatorio` — totais do dia + pix por fornecedora + PDFs
+
+---
+
+## Regras de comissão
+
+- `comissao_pct` = **% que o brechó (Najú) retém** de cada peça
+- A fornecedora recebe o resto: `pix = preço × (100 − comissao_pct) / 100`
+- Padrão **40% Najú / 60% fornecedora** — personalizável por peça
+- **0%** = 100% pra fornecedora (ex: peças da mãe)
+- **100%** = peça própria da Najú (não entra nos repasses)
+- **Regra da arara:** peça de **exatamente R$5** vai 100% pra fornecedora, independente da % combinada
+
+---
 
 ## Banco de dados
 
-Tudo salvo em `pecas.xlsx` na mesma pasta — pode abrir no Excel também.
-
-## Comissões
-
-- Padrão: 40% fica pra Najú, 60% vai pra fornecedora
-- Personalizável por peça no momento do cadastro (campo "comissão najú %")
-- O relatório já calcula tudo automaticamente ★
+SQLite — arquivo `brecho.db` gerado localmente, funciona **sem internet**.
+Pra resetar pros dados de exemplo: botão **↺** no topo do app.
