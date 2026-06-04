@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block titlebit %} · estoque{% endblock %}
+
+{% block content %}
+<form method="get" action="{{ url_for('estoque') }}">
+  <div class="toolbar">
+    <div class="halftone"></div>
+
+    <div style="position:relative;flex:1 1 220px;min-width:200px">
+      <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:17px;color:var(--ink3)">⌕</span>
+      <input class="input" name="q" value="{{ f.q }}"
+             placeholder="buscar código ou descrição…"
+             style="height:44px;padding-left:38px"/>
+    </div>
+
+    <select class="select" name="categoria" style="width:170px;height:44px" onchange="this.form.submit()">
+      <option value="todas">categoria: todas</option>
+      {% for c in categorias %}
+        <option value="{{ c }}" {{ 'selected' if f.categoria==c }}>{{ c }}</option>
+      {% endfor %}
+    </select>
+
+    <select class="select" name="fornecedora" style="width:200px;height:44px" onchange="this.form.submit()">
+      <option value="todas">fornecedora: todas</option>
+      {% for forn in fornecedoras %}
+        <option value="{{ forn.id }}" {{ 'selected' if f.fornecedora==forn.id|string }}>{{ forn.nome }}</option>
+      {% endfor %}
+    </select>
+
+    <select class="select" name="status" style="width:160px;height:44px" onchange="this.form.submit()">
+      <option value="todos">status: todos</option>
+      {% for s in status_list %}
+        <option value="{{ s }}" {{ 'selected' if f.status==s }}>{{ s }}</option>
+      {% endfor %}
+    </select>
+
+    <button class="btn btn-sm" type="submit">filtrar</button>
+    <a class="btn btn-ink btn-sm" href="{{ url_for('cadastro') }}" style="margin-left:auto">nova peça →</a>
+  </div>
+</form>
+
+<div class="resumo">
+  <span class="mono">{{ pecas|length }} peças listadas</span>
+  <span class="mono">{{ disponiveis }} disponíveis no total</span>
+  <span class="mono hot">valor em estoque (filtro) · {{ valor|brl }}</span>
+</div>
+
+<div class="tablewrap">
+  <table class="tbl">
+    <thead>
+      <tr>
+        <th>código</th>
+        <th>descrição</th>
+        <th>categoria</th>
+        <th>fornecedora</th>
+        <th class="right">comissão</th>
+        <th class="right">preço</th>
+        <th>status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in pecas %}
+        <tr class="{{ 'vendido' if p.status=='vendido' }}">
+          <td class="num" style="font-size:12.5px;white-space:nowrap">{{ p.codigo }}</td>
+          <td style="font-weight:600;min-width:200px">{{ p.descricao }}</td>
+          <td style="color:var(--ink2)">{{ p.categoria }}</td>
+          <td style="color:var(--ink2);white-space:nowrap">{{ p.fornecedora.nome }}</td>
+          <td class="right num" style="font-size:12.5px;color:var(--ink2)">
+            {{ p.comissao_efetiva }}%
+            {% if p.is_arara %}
+              <span style="color:var(--pink);font-size:9px;margin-left:4px">R$5</span>
+            {% endif %}
+          </td>
+          <td class="right" style="font-weight:700;color:var(--pink);white-space:nowrap">{{ p.preco|brl }}</td>
+          <td><span class="spill {{ p.status }}">{{ p.status }}</span></td>
+        </tr>
+      {% else %}
+        <tr>
+          <td colspan="7" style="text-align:center;padding:50px 0">
+            <span class="script" style="font-size:30px;color:var(--ink2)">nenhuma peça com esse filtro…</span>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

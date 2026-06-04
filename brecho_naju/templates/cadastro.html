@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block titlebit %} · cadastrar{% endblock %}
+
+{% block content %}
+<div class="wrap" style="max-width:760px">
+  <div class="halftone"></div>
+
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:12px">
+    <div>
+      <span class="eyebrow">cadastrar peça</span>
+      <div class="script" style="font-size:34px;margin-top:4px;white-space:nowrap">achadinho novo ★</div>
+    </div>
+    <span class="mono" style="font-size:11px;color:var(--ink3)">código sugerido · {{ proximo }}</span>
+  </div>
+
+  <form method="post" action="{{ url_for('cadastro') }}" style="margin-top:24px" id="form-peca">
+    <div style="display:flex;flex-direction:column;gap:16px">
+
+      <div style="display:grid;grid-template-columns:160px 1fr;gap:14px">
+        <div class="field">
+          <label class="flabel">código</label>
+          <input class="input mono" name="codigo" value="{{ proximo }}"/>
+        </div>
+        <div class="field">
+          <label class="flabel">descrição *</label>
+          <input class="input" name="descricao"
+                 placeholder="ex: Vestido slip cetim tam M" required/>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="flabel">categoria *</label>
+        <div class="chips">
+          {% for c in categorias %}
+            <button type="button" class="chip" data-val="{{ c }}"
+                    onclick="pickCat(this,'{{ c }}')">{{ c }}</button>
+          {% endfor %}
+        </div>
+        <input type="hidden" name="categoria" id="categoria" required/>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 160px;gap:14px">
+        <div class="field">
+          <label class="flabel">fornecedora *</label>
+          <select class="select" name="fornecedora" id="fornecedora" onchange="onForn()">
+            {% for f in fornecedoras %}
+              <option value="{{ f.id }}" data-com="{{ f.comissao_padrao }}">{{ f.nome }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label class="flabel">preço (R$) *</label>
+          <input class="input mono" name="preco" id="preco"
+                 placeholder="0,00" inputmode="decimal" oninput="onPreco()"/>
+        </div>
+      </div>
+
+      <div class="arara-flag" id="arara" style="display:none">
+        <span style="color:var(--pink)">★</span>
+        <span>regra da arara: peça de R$5 →
+          <b style="color:var(--pink)">100% vai pra fornecedora</b>
+          (a % abaixo é ignorada).
+        </span>
+      </div>
+
+      <div class="field">
+        <label class="flabel" id="com-label">comissão do brechó</label>
+        <div class="chips" id="com-chips">
+          {% for c in [0, 40, 50, 60, 100] %}
+            <button type="button" class="chip {{ 'on' if c==40 }}"
+                    data-val="{{ c }}" onclick="pickCom(this,{{ c }})">{{ c }}%</button>
+          {% endfor %}
+        </div>
+        <input type="hidden" name="comissao" id="comissao" value="40"/>
+        <span class="fhint" id="com-hint">fornecedora recebe 60%</span>
+      </div>
+
+      <div class="field">
+        <label class="flabel">status inicial</label>
+        <div class="chips">
+          <button type="button" class="chip on" data-val="disponivel"
+                  onclick="pickStatus(this,'disponivel')">disponivel</button>
+          <button type="button" class="chip" data-val="reservado"
+                  onclick="pickStatus(this,'reservado')">reservado</button>
+        </div>
+        <input type="hidden" name="status" id="status" value="disponivel"/>
+      </div>
+    </div>
+
+    {# ── Preview de repasse + botão salvar ── #}
+    <div style="margin-top:22px;border-top:1.5px solid var(--line);padding-top:18px;
+                display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px">
+      <div style="display:flex;gap:26px;flex-wrap:wrap">
+        <div>
+          <span class="mono" style="font-size:10px;color:var(--ink3)">najú fica com</span>
+          <div style="font-weight:700;font-size:22px" id="prev-naju">R$ 0,00</div>
+        </div>
+        <div>
+          <span class="mono" style="font-size:10px;color:var(--ink3)">pix p/ fornecedora</span>
+          <div style="font-weight:700;font-size:22px;color:var(--pink)" id="prev-forn">R$ 0,00</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;align-items:center">
+        <a class="btn btn-ghost" href="{{ url_for('estoque') }}">ver estoque</a>
+        <button class="btn btn-pink btn-lg" type="submit">salvar peça ★</button>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const PRECO_ARARA = {{ preco_arara }};
+  let comissao = 40;
+
+  function setChipGroup(container, btn) {
+    container.querySelectorAll('.chip').forEach(c => c.classList.remove('on'));
+    btn.classList.add('on');
+  }
+
+  function pickCat(btn, v) {
+    setChipGroup(btn.parentElement, btn);
+    document.getElementById('categoria').value = v;
+  }
+  function pickStatus(btn, v) {
+    setChipGroup(btn.parentElement, btn);
+    document.getElementById('status').value = v;
+  }
+  function pickCom(btn, v) {
+    setChipGroup(btn.parentElement, btn);
+    comissao = v;
+    document.getElementById('comissao').value = v;
+    updateHint(); recalc();
+  }
+
+  function onForn() {
+    const opt = document.getElementById('fornecedora').selectedOptions[0];
+    const com = parseInt(opt.dataset.com);
+    const chips = document.querySelectorAll('#com-chips .chip');
+    chips.forEach(c => c.classList.toggle('on', parseInt(c.dataset.val) === com));
+    comissao = com;
+    document.getElementById('comissao').value = com;
+    updateHint(); recalc();
+  }
+
+  function updateHint() {
+    const h = document.getElementById('com-hint');
+    if (comissao === 0)        h.textContent = '0% → lucro 100% pra fornecedora';
+    else if (comissao === 100) h.textContent = '100% fica com o brechó (peça própria)';
+    else                       h.textContent = 'fornecedora recebe ' + (100 - comissao) + '%';
+  }
+
+  function onPreco() { recalc(); }
+
+  function recalc() {
+    const preco = parseFloat(
+      (document.getElementById('preco').value || '0').replace(',', '.')
+    ) || 0;
+    const arara = preco === PRECO_ARARA;
+    document.getElementById('arara').style.display = arara ? 'flex' : 'none';
+    document.getElementById('com-chips').style.opacity = arara ? 0.4 : 1;
+    const comEf = arara ? 0 : comissao;
+    const naju  = preco * comEf / 100;
+    const forn  = preco * (100 - comEf) / 100;
+    document.getElementById('prev-naju').textContent = brl(naju);
+    document.getElementById('prev-forn').textContent = brl(forn);
+  }
+
+  function brl(n) {
+    return 'R$ ' + n.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+  }
+
+  onForn();
+</script>
+{% endblock %}

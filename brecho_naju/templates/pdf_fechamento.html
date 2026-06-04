@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"/>
+<title>Brechó da Najú · {{ 'Repasse — ' + single.nome if single else 'Fechamento' }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"/>
+<style>
+  body { background: #0A0808; }
+  .pdf-toolbar {
+    position: sticky; top: 0; z-index: 5;
+    display: flex; justify-content: center; gap: 12px;
+    padding: 16px; background: rgba(10,8,8,0.7);
+  }
+  .pdf-page {
+    width: 794px; max-width: 96vw; margin: 0 auto 60px;
+    background: #fff; color: #1A1714;
+    padding: 40px 44px 48px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    font-family: var(--body);
+  }
+  .pdf-head {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    border-bottom: 3px solid #1A1714; padding-bottom: 16px;
+  }
+  .pdf-num { font-family: var(--code); font-variant-numeric: tabular-nums; }
+  .pdf-band {
+    display: flex; justify-content: space-between; align-items: flex-end;
+    background: #1A1714; color: #FBFAF6; padding: 10px 14px; margin-top: 24px;
+  }
+  table.pdf-tbl { width: 100%; border-collapse: collapse; border: 1.5px solid #1A1714; border-top: none; }
+  table.pdf-tbl th {
+    padding: 7px 9px; text-align: left;
+    font-family: var(--code); font-size: 8.5px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: #5a5048; border-bottom: 1.5px solid #1A1714; white-space: nowrap;
+  }
+  table.pdf-tbl td {
+    padding: 7px 9px; font-size: 11px;
+    border-bottom: 1px solid #e3dccf; color: #1A1714; vertical-align: top;
+  }
+  table.pdf-tbl tr:nth-child(even) td { background: #F6F2EA; }
+  .r { text-align: right; }
+  .c { text-align: center; }
+
+  @media print {
+    body { background: #fff; }
+    .pdf-toolbar { display: none; }
+    .pdf-page { box-shadow: none; margin: 0; width: 100%; max-width: none; padding: 0; }
+    @page { size: A4 portrait; margin: 12mm; }
+  }
+</style>
+</head>
+<body>
+
+<div class="pdf-toolbar">
+  <button class="btn btn-pink" onclick="window.print()">★ imprimir / salvar PDF</button>
+  <button class="btn btn-ghost" style="color:#fff;border-color:rgba(255,255,255,0.5)"
+          onclick="window.close()">fechar ✕</button>
+</div>
+
+<div class="pdf-page">
+
+  {# ── Cabeçalho ── #}
+  <div class="pdf-head">
+    <div>
+      <div class="wordmark" style="font-size:22px">Brechó da Najú</div>
+      <div style="font-weight:800;font-size:26px;margin-top:10px">
+        {{ 'Repasse da feira' if single else 'Fechamento da feira' }}
+      </div>
+      <div class="mono" style="font-size:10.5px;color:#5a5048;margin-top:6px">
+        {{ agora.strftime('%d/%m/%Y') }}
+      </div>
+      {% if single %}
+        <div style="font-weight:700;font-size:14px;margin-top:10px">
+          Para: <span style="color:#FF2E93">{{ single.nome }}</span>
+        </div>
+      {% endif %}
+    </div>
+    <div style="text-align:right">
+      <span style="color:#FF2E93;font-size:30px">★</span>
+      <div class="mono" style="font-size:9px;color:#8a8178;margin-top:8px">
+        gerado {{ agora.strftime('%H:%M') }}
+      </div>
+    </div>
+  </div>
+
+  {# ── Resumo topo ── #}
+  {% if single %}
+    {% set row = linhas[0] %}
+    <div style="display:flex;justify-content:space-between;align-items:center;
+                border:2.5px solid #FF2E93;margin-top:22px;padding:16px 20px">
+      <div>
+        <div class="mono" style="font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:#8a8178">
+          pix a receber
+        </div>
+        <div class="mono" style="font-size:12px;margin-top:6px">
+          chave: <b>{{ single.pix }}</b>
+        </div>
+      </div>
+      <div style="text-align:right">
+        <div class="pdf-num" style="font-weight:800;font-size:34px;color:#FF2E93;line-height:1">
+          {{ row.pix|brl }}
+        </div>
+        <div class="mono" style="font-size:9.5px;color:#8a8178;margin-top:4px">
+          {{ row.qtd }} {{ 'peça vendida' if row.qtd==1 else 'peças vendidas' }}
+        </div>
+      </div>
+    </div>
+  {% else %}
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);border:1.5px solid #1A1714;margin-top:22px">
+      {% set sumcards = [
+        ('peças vendidas',       r.qtd|string,          false),
+        ('total vendido',        r.total_bruto|brl,     false),
+        ('fica pra najú',        r.total_comissao|brl,  false),
+        ('total de pix a enviar',r.total_pix|brl,       true),
+      ] %}
+      {% for lbl, val, hot in sumcards %}
+        <div style="padding:12px 14px;
+                    {{ 'border-left:1px solid #1A1714' if not loop.first }};
+                    {{ 'background:#FF2E93' if hot }}">
+          <div class="mono" style="font-size:8px;letter-spacing:0.1em;text-transform:uppercase;
+                                   color:{{ '#0A0808' if hot else '#8a8178' }}">{{ lbl }}</div>
+          <div class="pdf-num" style="font-weight:800;font-size:18px;margin-top:6px;
+                                      color:{{ '#0A0808' if hot else '#1A1714' }}">{{ val }}</div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if not linhas %}
+    <div style="text-align:center;padding:50px 0;color:#8a8178" class="mono">
+      nenhuma venda hoje…
+    </div>
+  {% endif %}
+
+  {# ── Seções por fornecedora ── #}
+  {% for row in linhas %}
+    {% set f = row.fornecedora %}
+    <div style="margin-top:24px;break-inside:avoid">
+      <div class="pdf-band">
+        <div>
+          <div style="font-weight:800;font-size:16px">★ {{ f.nome }}</div>
+          <div class="mono" style="font-size:10px;color:#C9C2B8;margin-top:3px">pix: {{ f.pix }}</div>
+        </div>
+        <div style="text-align:right">
+          <div class="mono" style="font-size:8px;letter-spacing:0.1em;color:#C9C2B8;text-transform:uppercase">
+            {{ 'total a receber' if single else 'enviar pix' }}
+          </div>
+          <div class="pdf-num" style="font-weight:800;font-size:22px;color:#FF2E93;line-height:1">
+            {{ row.pix|brl }}
+          </div>
+        </div>
+      </div>
+
+      <table class="pdf-tbl">
+        <thead>
+          <tr>
+            <th style="width:64px">código</th>
+            <th>descrição</th>
+            <th class="r" style="width:78px">valor peça</th>
+            <th class="c" style="width:56px">% forn.</th>
+            <th class="r" style="width:92px">{{ 'comissão brechó' if single else 'fica najú' }}</th>
+            <th class="r" style="width:92px">{{ 'você recebe' if single else 'p/ fornecedora' }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in row.pecas %}
+            <tr>
+              <td class="pdf-num" style="font-size:9.5px;white-space:nowrap">{{ p.codigo }}</td>
+              <td style="font-weight:600">
+                {{ p.descricao }}
+                <span style="color:#8a8178;font-weight:400"> · {{ p.categoria }}</span>
+                {% if p.is_arara %}
+                  <span style="color:#FF2E93;font-size:8px"> ★R$5</span>
+                {% endif %}
+              </td>
+              <td class="r pdf-num" style="white-space:nowrap">{{ p.preco|brl }}</td>
+              <td class="c pdf-num" style="color:#5a5048">{{ 100 - p.comissao_efetiva }}%</td>
+              <td class="r pdf-num" style="color:#5a5048;white-space:nowrap">{{ p.fica_naju|brl }}</td>
+              <td class="r pdf-num" style="font-weight:700;color:#FF2E93;white-space:nowrap">
+                {{ p.pix_fornecedora|brl }}
+              </td>
+            </tr>
+          {% endfor %}
+          <tr style="border-top:2px solid #1A1714">
+            <td class="pdf-num" colspan="2" style="font-weight:800;border-bottom:none">
+              {{ row.qtd }} {{ 'peça' if row.qtd==1 else 'peças' }}
+            </td>
+            <td class="r pdf-num" style="font-weight:800;border-bottom:none">{{ row.bruto|brl }}</td>
+            <td style="border-bottom:none"></td>
+            <td class="r pdf-num" style="font-weight:800;border-bottom:none">{{ row.comissao|brl }}</td>
+            <td class="r pdf-num" style="font-weight:800;color:#FF2E93;border-bottom:none">{{ row.pix|brl }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  {% endfor %}
+
+  {# ── Total geral (só no modo geral) ── #}
+  {% if not single and linhas %}
+    <div style="margin-top:26px;display:flex;justify-content:space-between;align-items:center;
+                border:2.5px solid #FF2E93;padding:14px 18px;break-inside:avoid">
+      <div style="font-weight:800;font-size:15px">
+        Total de pix a enviar hoje
+        <span class="mono" style="font-size:10px;color:#8a8178;margin-left:10px">
+          {{ linhas|length }} {{ 'fornecedora' if linhas|length==1 else 'fornecedoras' }}
+        </span>
+      </div>
+      <div class="pdf-num" style="font-weight:800;font-size:26px;color:#FF2E93">
+        {{ r.total_pix|brl }}
+      </div>
+    </div>
+  {% endif %}
+
+  {# ── Rodapé ── #}
+  <div style="margin-top:30px;display:flex;justify-content:space-between;align-items:flex-end;
+              border-top:1px solid #d8cfbe;padding-top:16px">
+    <div class="mono" style="font-size:8.5px;color:#8a8178;line-height:1.6;max-width:380px">
+      {% if single %}
+        <span class="script" style="font-size:17px;color:#1A1714">
+          obrigada por confiar suas peças no Brechó da Najú ★
+        </span>
+      {% else %}
+        pix p/ fornecedora = valor da peça × (100 − comissão do brechó%).<br/>
+        comissão é por peça · peças de R$5 vão 100% pra fornecedora · peças próprias da Najú não entram nos repasses.
+      {% endif %}
+    </div>
+    <div style="text-align:center">
+      <div style="width:200px;border-bottom:1.5px solid #1A1714;height:28px"></div>
+      <div class="mono" style="font-size:9px;color:#5a5048;margin-top:6px">
+        {{ 'recebido por →' if single else 'conferido por →' }}
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

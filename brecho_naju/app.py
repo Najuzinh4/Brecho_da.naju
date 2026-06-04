@@ -1,213 +1,217 @@
-from flask import Flask, render_template, request, jsonify
-import pandas as pd
-import openpyxl
-from openpyxl import load_workbook, Workbook
-from datetime import datetime
+# -*- coding: utf-8 -*-
+"""
+app.py — Brechó da Najú · PDV de feira (Flask + SQLite)
+
+Rodar:
+    .venv\\Scripts\\activate
+    python app.py
+
+Abre em http://127.0.0.1:5000
+No iPad (mesma rede Wi-Fi): http://IP-DO-NOTEBOOK:5000
+"""
+
 import os
-import json
-import requests
-from code_service import proximo_codigo_para
+from datetime import datetime
+from flask import (Flask, render_template, request, redirect,
+                   url_for, flash, abort)
+from models import (db, Fornecedora, Peca, CATEGORIAS, STATUS,
+                    PRECO_ARARA, fmt_brl, proximo_codigo, build_relatorio)
 
-app = Flask(__name__)
-EXCEL_PATH = "pecas.xlsx"
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
-# ── helpers ──────────────────────────────────────────────────────────────────
 
-def init_excel():
-    if not os.path.exists(EXCEL_PATH):
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "Peças"
-        ws.append(["codigo", "descricao", "categoria", "fornecedora",
-                   "comissao_pct", "preco", "status", "vendido_em"])
-        wb.save(EXCEL_PATH)
-
-def load_pecas():
-    init_excel()
-    df = pd.read_excel(EXCEL_PATH, sheet_name="Peças", dtype={"codigo": str})
-    df = df.fillna("")
-    return df
-
-def save_peca(row: dict):
-    init_excel()
-    wb = load_workbook(EXCEL_PATH)
-    ws = wb["Peças"]
-    ws.append([
-        row["codigo"], row["descricao"], row["categoria"],
-        row["fornecedora"], float(row["comissao_pct"]),
-        float(row["preco"]), "disponivel", ""
-    ])
-    wb.save(EXCEL_PATH)
-
-def update_status(codigo: str, novo_status: str):
-    wb = load_workbook(EXCEL_PATH)
-    ws = wb["Peças"]
-    headers = [c.value for c in ws[1]]
-    idx_codigo   = headers.index("codigo") + 1
-    idx_status   = headers.index("status") + 1
-    idx_vendido  = headers.index("vendido_em") + 1
-    for row in ws.iter_rows(min_row=2):
-        if str(row[idx_codigo - 1].value) == str(codigo):
-            row[idx_status - 1].value = novo_status
-            if novo_status == "vendido":
-                row[idx_vendido - 1].value = datetime.now().strftime("%Y-%m-%d %H:%M")
-            else:
-                row[idx_vendido - 1].value = ""
-            break
-    wb.save(EXCEL_PATH)
-
-def delete_peca(codigo: str):
-    wb = load_workbook(EXCEL_PATH)
-    ws = wb["Peças"]
-    headers = [c.value for c in ws[1]]
-    idx_codigo = headers.index("codigo") + 1
-    for i, row in enumerate(ws.iter_rows(min_row=2), start=2):
-        if str(row[idx_codigo - 1].value) == str(codigo):
-            ws.delete_rows(i)
-            break
-    wb.save(EXCEL_PATH)
-
-def calcular_relatorio(df):
-    vendidas = df[df["status"] == "vendido"].copy()
-    vendidas["comissao_pct"] = pd.to_numeric(vendidas["comissao_pct"], errors="coerce").fillna(40)
-    vendidas["preco"] = pd.to_numeric(vendidas["preco"], errors="coerce").fillna(0)
-    vendidas["val_naju"]       = vendidas["preco"] * vendidas["comissao_pct"] / 100
-    vendidas["val_fornecedora"] = vendidas["preco"] - vendidas["val_naju"]
-
-    total_vendido  = vendidas["preco"].sum()
-    total_naju     = vendidas["val_naju"].sum()
-
-    por_fornecedora = (
-        vendidas.groupby("fornecedora")
-        .agg(pecas=("codigo", "count"),
-             total_vendas=("preco", "sum"),
-             total_a_pagar=("val_fornecedora", "sum"))
-        .reset_index()
-        .to_dict(orient="records")
+def create_app():
+    app = Flask(__name__)
+    app.config["SECRET_KEY"] = "brecho-naju-2025"
+    app.config["SQLALCHEMY_DATABASE_URI"] = (
+        "sqlite:///" + os.path.join(BASE_DIR, "brecho.db")
     )
+    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-    return {
-        "total_vendido": round(total_vendido, 2),
-        "total_naju": round(total_naju, 2),
-        "por_fornecedora": [
-            {**r,
-             "total_vendas": round(r["total_vendas"], 2),
-             "total_a_pagar": round(r["total_a_pagar"], 2)}
-            for r in por_fornecedora
-        ]
-    }
+    db.init_app(app)
+    app.jinja_env.filters["brl"] = fmt_brl
 
-# ── Claude API ────────────────────────────────────────────────────────────────
+    with app.app_context():
+        db.create_all()
+        from seed import seed
+        seed()
 
-def claude_ajuda(tipo: str, descricao: str, categoria: str = "", preco: str = ""):
-    system = (
-        "Você é assistente da Brechó da Najú, brechó brasileiro Y2K/grunge/upcycling. "
-        "A marca fala em português, lowercase, tom íntimo e slangy. "
-        "Usa ★ ✦ como pontuação. Nunca usa corporativo."
-    )
+    # injeta disponiveis em todos os templates automaticamente
+    @app.context_processor
+    def _globals():
+        try:
+            return {"disponiveis": Peca.query.filter_by(status="disponivel").count()}
+        except Exception:
+            return {"disponiveis": 0}
 
-    if tipo == "descricao_instagram":
-        prompt = (
-            f"Crie uma legenda curta pra Instagram pra essa peça do brechó:\n"
-            f"Peça: {descricao}\nCategoria: {categoria}\nPreço: R$ {preco}\n\n"
-            f"Máximo 5 linhas. Estilo Najú: lowercase, estrelas, hashtags no final."
+    register_routes(app)
+    return app
+
+
+def register_routes(app):
+
+    # ── PDV ──────────────────────────────────────────────────────────────
+    @app.route("/")
+    def pdv():
+        q = (request.args.get("q") or "").strip()
+        query = Peca.query.filter(Peca.status != "vendido")
+        if q:
+            like = f"%{q}%"
+            query = query.filter(
+                db.or_(Peca.codigo.ilike(like), Peca.descricao.ilike(like))
+            )
+        pecas = query.order_by(Peca.codigo).all()
+        sel = None
+        sid = request.args.get("sel", type=int)
+        if sid:
+            sel = db.session.get(Peca, sid)
+        return render_template("pdv.html", pecas=pecas, sel=sel, q=q, active="pdv")
+
+    @app.route("/vender/<int:peca_id>", methods=["POST"])
+    def vender(peca_id):
+        p = db.session.get(Peca, peca_id)
+        if p is None:
+            abort(404)
+        if p.status != "vendido":
+            p.status = "vendido"
+            p.vendido_em = datetime.now()
+            db.session.commit()
+            flash(f"✓ {p.codigo} vendido · {fmt_brl(p.preco)}", "venda")
+        return redirect(url_for("pdv"))
+
+    # ── Estoque ───────────────────────────────────────────────────────────
+    @app.route("/estoque")
+    def estoque():
+        q = (request.args.get("q") or "").strip()
+        cat = request.args.get("categoria") or "todas"
+        forn = request.args.get("fornecedora") or "todas"
+        stat = request.args.get("status") or "todos"
+
+        query = Peca.query
+        if q:
+            like = f"%{q}%"
+            query = query.filter(
+                db.or_(Peca.codigo.ilike(like), Peca.descricao.ilike(like))
+            )
+        if cat != "todas":
+            query = query.filter_by(categoria=cat)
+        if forn != "todas":
+            query = query.filter_by(fornecedora_id=int(forn))
+        if stat != "todos":
+            query = query.filter_by(status=stat)
+
+        pecas = query.order_by(Peca.codigo.desc()).all()
+        valor = sum(p.preco for p in pecas if p.status != "vendido")
+        return render_template(
+            "estoque.html", pecas=pecas,
+            fornecedoras=Fornecedora.query.all(),
+            categorias=CATEGORIAS, status_list=STATUS,
+            f={"q": q, "categoria": cat, "fornecedora": forn, "status": stat},
+            valor=valor, active="estoque",
         )
-    elif tipo == "sugerir_preco":
-        prompt = (
-            f"Sugira um preço justo pra brechó brasileiro pra essa peça:\n"
-            f"{descricao}\nCategoria: {categoria}\n\n"
-            f"Responda só com o valor em reais (ex: 45.00) e uma linha explicando."
+
+    # ── Cadastro de peça ──────────────────────────────────────────────────
+    @app.route("/cadastro", methods=["GET", "POST"])
+    def cadastro():
+        if request.method == "POST":
+            try:
+                preco = float(
+                    (request.form.get("preco") or "0").replace(",", ".")
+                )
+            except ValueError:
+                preco = 0
+            descricao = (request.form.get("descricao") or "").strip()
+            categoria = request.form.get("categoria")
+            if not descricao or not categoria or preco <= 0:
+                flash("Preencha descrição, categoria e preço.", "erro")
+                return redirect(url_for("cadastro"))
+
+            p = Peca(
+                codigo=request.form.get("codigo") or proximo_codigo(),
+                descricao=descricao,
+                categoria=categoria,
+                fornecedora_id=int(request.form.get("fornecedora")),
+                comissao_pct=int(request.form.get("comissao", 40)),
+                preco=preco,
+                status=request.form.get("status", "disponivel"),
+            )
+            db.session.add(p)
+            db.session.commit()
+            flash(f"★ Peça {p.codigo} salva no estoque", "ok")
+            return redirect(url_for("cadastro"))
+
+        return render_template(
+            "cadastro.html",
+            fornecedoras=Fornecedora.query.all(),
+            categorias=CATEGORIAS,
+            proximo=proximo_codigo(),
+            preco_arara=PRECO_ARARA,
+            active="cadastro",
         )
-    elif tipo == "categorizar":
-        prompt = (
-            f"Categorize essa peça de brechó em UMA dessas categorias: "
-            f"topo, calça, vestido, saia, jaqueta, acessório, sapato, bolsa, outro.\n"
-            f"Peça: {descricao}\n\nResponda só com a categoria, sem mais nada."
+
+    # ── Nova fornecedora (modal) ──────────────────────────────────────────
+    @app.route("/fornecedora/nova", methods=["POST"])
+    def nova_fornecedora():
+        nome = (request.form.get("nome") or "").strip()
+        if len(nome) < 2:
+            flash("Nome da fornecedora muito curto.", "erro")
+            return redirect(request.referrer or url_for("pdv"))
+        f = Fornecedora(
+            nome=nome,
+            pix=(request.form.get("pix") or "—").strip() or "—",
+            comissao_padrao=int(request.form.get("comissao", 40)),
         )
-    else:
-        return {"erro": "tipo inválido"}
+        db.session.add(f)
+        db.session.commit()
+        flash(f"★ Fornecedora {f.nome} cadastrada", "ok")
+        return redirect(request.referrer or url_for("cadastro"))
 
-    try:
-        resp = requests.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={"Content-Type": "application/json"},
-            json={
-                "model": "claude-sonnet-4-20250514",
-                "max_tokens": 300,
-                "system": system,
-                "messages": [{"role": "user", "content": prompt}]
-            },
-            timeout=15
+    # ── Relatório / fechamento ────────────────────────────────────────────
+    @app.route("/relatorio")
+    def relatorio():
+        r = build_relatorio()
+        return render_template(
+            "relatorio.html", r=r, hoje=datetime.now(), active="relatorio"
         )
-        data = resp.json()
-        texto = data["content"][0]["text"]
-        return {"resultado": texto}
-    except Exception as e:
-        return {"erro": str(e)}
 
-# ── Rotas ─────────────────────────────────────────────────────────────────────
+    # ── PDFs imprimíveis ──────────────────────────────────────────────────
+    @app.route("/relatorio/pdf")
+    def relatorio_pdf():
+        r = build_relatorio()
+        linhas = [l for l in r["linhas"] if not l["fornecedora"].propria]
+        return render_template(
+            "pdf_fechamento.html", r=r, linhas=linhas,
+            single=None, agora=datetime.now()
+        )
 
-@app.route("/")
-def index():
-    return render_template("index.html")
+    @app.route("/relatorio/pdf/<int:forn_id>")
+    def relatorio_pdf_forn(forn_id):
+        r = build_relatorio()
+        linha = next(
+            (l for l in r["linhas"] if l["fornecedora"].id == forn_id), None
+        )
+        if not linha:
+            abort(404)
+        return render_template(
+            "pdf_fechamento.html", r=r, linhas=[linha],
+            single=linha["fornecedora"], agora=datetime.now()
+        )
 
-@app.route("/api/pecas", methods=["GET"])
-def get_pecas():
-    df = load_pecas()
-    return jsonify(df.to_dict(orient="records"))
+    # ── Reset (volta aos dados de exemplo) ────────────────────────────────
+    @app.route("/reset", methods=["POST"])
+    def reset():
+        db.drop_all()
+        db.create_all()
+        from seed import seed
+        seed()
+        flash("Banco resetado pros dados de exemplo.", "ok")
+        return redirect(url_for("pdv"))
 
-@app.route("/api/pecas", methods=["POST"])
-def post_peca():
-    data = request.json
-    # se não vier código, gera automaticamente
-    if not data.get("codigo"):
-        df = load_pecas()
-        data["codigo"] = proximo_codigo_para(data.get("fornecedora", "X"), df)
-    save_peca(data)
-    return jsonify({"ok": True, "codigo": data["codigo"]})
 
-@app.route("/api/codigo-preview", methods=["POST"])
-def codigo_preview():
-    """Retorna o próximo código para uma fornecedora sem salvar nada."""
-    fornecedora = request.json.get("fornecedora", "").strip()
-    if not fornecedora:
-        return jsonify({"codigo": ""})
-    df = load_pecas()
-    codigo = proximo_codigo_para(fornecedora, df)
-    return jsonify({"codigo": codigo})
-
-@app.route("/api/pecas/<codigo>/vender", methods=["POST"])
-def vender(codigo):
-    update_status(codigo, "vendido")
-    return jsonify({"ok": True})
-
-@app.route("/api/pecas/<codigo>/devolver", methods=["POST"])
-def devolver(codigo):
-    update_status(codigo, "disponivel")
-    return jsonify({"ok": True})
-
-@app.route("/api/pecas/<codigo>", methods=["DELETE"])
-def deletar(codigo):
-    delete_peca(codigo)
-    return jsonify({"ok": True})
-
-@app.route("/api/relatorio", methods=["GET"])
-def relatorio():
-    df = load_pecas()
-    return jsonify(calcular_relatorio(df))
-
-@app.route("/api/claude", methods=["POST"])
-def claude_route():
-    data = request.json
-    resultado = claude_ajuda(
-        tipo=data.get("tipo"),
-        descricao=data.get("descricao", ""),
-        categoria=data.get("categoria", ""),
-        preco=data.get("preco", "")
-    )
-    return jsonify(resultado)
+app = create_app()
 
 if __name__ == "__main__":
-    init_excel()
-    print("\n★ Brechó da Najú PDV rodando em http://localhost:5000\n")
-    app.run(debug=True, port=5000)
+    print("Brecho da Naju PDV em http://localhost:5000")
+    print("No iPad (mesma Wi-Fi): http://SEU-IP:5000")
+    # host=0.0.0.0 permite acesso pelo iPad na mesma rede
+    app.run(debug=True, host="0.0.0.0", port=5000)

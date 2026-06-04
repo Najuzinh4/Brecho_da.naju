@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>Brechó da Najú · PDV{% block titlebit %}{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"/>
+{% block head %}{% endblock %}
+</head>
+<body>
+<div class="app">
+
+  <header class="header">
+    <div class="halftone"></div>
+    <div class="header-top">
+      <div class="brand">
+        <span class="star">★</span>
+        <div>
+          <div class="wordmark">Brechó da Najú</div>
+          <div class="sub">ponto de venda · feira</div>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button class="btn btn-sm" onclick="document.getElementById('modal-forn').style.display='grid'">
+          <span style="color:var(--pink);font-size:15px">+</span> fornecedora
+        </button>
+        <div class="counter">
+          <div class="lbl mono">peças disponíveis</div>
+          <div class="val">{{ disponiveis }}</div>
+        </div>
+        <form action="{{ url_for('reset') }}" method="post"
+              onsubmit="return confirm('Zerar o dia e voltar aos dados de exemplo?')">
+          <button class="btn btn-ghost btn-sm" title="zerar dados" style="width:42px;padding:0">↺</button>
+        </form>
+      </div>
+    </div>
+
+    <nav class="tabs">
+      <a class="tab {{ 'active' if active=='pdv' }}"       href="{{ url_for('pdv') }}">
+        <span class="dot"></span>pdv{% if active=='pdv' %} ★{% endif %}</a>
+      <a class="tab {{ 'active' if active=='estoque' }}"   href="{{ url_for('estoque') }}">
+        <span class="dot"></span>estoque{% if active=='estoque' %} …{% endif %}</a>
+      <a class="tab {{ 'active' if active=='cadastro' }}"  href="{{ url_for('cadastro') }}">
+        <span class="dot"></span>cadastrar{% if active=='cadastro' %} ★{% endif %}</a>
+      <a class="tab {{ 'active' if active=='relatorio' }}" href="{{ url_for('relatorio') }}">
+        <span class="dot"></span>fechamento{% if active=='relatorio' %} ★{% endif %}</a>
+    </nav>
+  </header>
+
+  <main class="main">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+{# ── Flash messages ────────────────────────────────────── #}
+{% with msgs = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in msgs %}
+    {% if cat == 'venda' %}
+      <div class="venda-overlay" onclick="this.remove()">
+        <div style="text-align:center">
+          <div class="vendido-stamp">VENDIDO ✕</div>
+          <div style="margin-top:20px;color:var(--cream);font-weight:800;font-size:24px">{{ msg }}</div>
+          <div class="script" style="color:var(--pink);font-size:30px;margin-top:8px">foi pra casa nova 🩷</div>
+        </div>
+      </div>
+    {% else %}
+      <div class="flash {{ 'erro' if cat=='erro' }}">
+        {{ '★' if cat=='ok' else '⚠' }} {{ msg }}
+      </div>
+    {% endif %}
+  {% endfor %}
+{% endwith %}
+
+{# ── Modal nova fornecedora (disponível em todas as telas) ── #}
+<div class="modal-bg" id="modal-forn" style="display:none">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="t"><span style="color:var(--pink)">★</span> nova fornecedora</div>
+      <button class="x" onclick="document.getElementById('modal-forn').style.display='none'">✕</button>
+    </div>
+    <form action="{{ url_for('nova_fornecedora') }}" method="post">
+      <div class="modal-body">
+        <div class="field">
+          <label class="flabel">nome *</label>
+          <input class="input" name="nome" placeholder="ex: Mãe / Dona Cleide" required/>
+        </div>
+        <div class="field">
+          <label class="flabel">chave pix</label>
+          <input class="input mono" name="pix" placeholder="ex: (11) 99999-0000"/>
+          <span class="fhint">telefone, e-mail, cpf ou aleatória · pode preencher depois</span>
+        </div>
+        <div class="field">
+          <label class="flabel">comissão padrão do brechó</label>
+          <div class="chips" id="forn-com-chips">
+            {% for c in [0, 40, 50, 60] %}
+              <button type="button" class="chip {{ 'on' if c==40 }}"
+                      data-val="{{ c }}" onclick="pickFornCom(this,{{ c }})">{{ c }}%</button>
+            {% endfor %}
+          </div>
+          <input type="hidden" name="comissao" id="forn-com" value="40"/>
+          <span class="fhint">0% = lucro 100% pra fornecedora (ex: peças da sua mãe)</span>
+        </div>
+        <div class="fhint" style="border-left:3px solid var(--pink);padding-left:10px">
+          ★ peças de R$5 sempre vão 100% pra fornecedora, de qualquer forma.
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-ghost"
+                onclick="document.getElementById('modal-forn').style.display='none'">cancelar</button>
+        <button type="submit" class="btn btn-pink">salvar fornecedora →</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  function pickFornCom(btn, val) {
+    document.querySelectorAll('#forn-com-chips .chip').forEach(c => c.classList.remove('on'));
+    btn.classList.add('on');
+    document.getElementById('forn-com').value = val;
+  }
+  // remove flash não-venda depois de 3s
+  setTimeout(() => document.querySelectorAll('.flash').forEach(f => f.remove()), 3200);
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
