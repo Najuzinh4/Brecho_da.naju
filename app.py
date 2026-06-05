@@ -13,7 +13,7 @@ No iPad (mesma rede Wi-Fi): http://IP-DO-NOTEBOOK:5000
 import os
 from datetime import datetime
 from flask import (Flask, render_template, request, redirect,
-                   url_for, flash, abort)
+                   url_for, flash, abort, jsonify)
 from models import (db, Fornecedora, Peca, CATEGORIAS, STATUS,
                     PRECO_ARARA, fmt_brl, proximo_codigo, build_relatorio)
 
@@ -126,11 +126,12 @@ def register_routes(app):
                 flash("Preencha descrição, categoria e preço.", "erro")
                 return redirect(url_for("cadastro"))
 
+            forn_id = int(request.form.get("fornecedora"))
             p = Peca(
-                codigo=request.form.get("codigo") or proximo_codigo(),
+                codigo=request.form.get("codigo") or proximo_codigo(forn_id),
                 descricao=descricao,
                 categoria=categoria,
-                fornecedora_id=int(request.form.get("fornecedora")),
+                fornecedora_id=forn_id,
                 comissao_pct=int(request.form.get("comissao", 40)),
                 preco=preco,
                 status=request.form.get("status", "disponivel"),
@@ -140,14 +141,69 @@ def register_routes(app):
             flash(f"★ Peça {p.codigo} salva no estoque", "ok")
             return redirect(url_for("cadastro"))
 
+        fornecedoras = Fornecedora.query.all()
+        primeiro_id = fornecedoras[0].id if fornecedoras else None
         return render_template(
             "cadastro.html",
-            fornecedoras=Fornecedora.query.all(),
+            fornecedoras=fornecedoras,
             categorias=CATEGORIAS,
-            proximo=proximo_codigo(),
+            proximo=proximo_codigo(primeiro_id),
             preco_arara=PRECO_ARARA,
             active="cadastro",
         )
+
+    # ── API: preview de código por fornecedora ────────────────────────────
+    @app.route("/api/codigo-preview", methods=["POST"])
+    def codigo_preview():
+        forn_id = (request.json or {}).get("fornecedora_id")
+        return jsonify({"codigo": proximo_codigo(int(forn_id) if forn_id else None)})
+
+    # ── Editar peça ───────────────────────────────────────────────────────
+    @app.route("/pecas/<int:peca_id>/editar", methods=["GET", "POST"])
+    def editar(peca_id):
+        p = db.session.get(Peca, peca_id)
+        if p is None:
+            abort(404)
+        if request.method == "POST":
+            try:
+                preco = float(
+                    (request.form.get("preco") or "0").replace(",", ".")
+                )
+            except ValueError:
+                preco = 0
+            descricao = (request.form.get("descricao") or "").strip()
+            categoria = request.form.get("categoria")
+            if not descricao or not categoria or preco <= 0:
+                flash("Preencha descrição, categoria e preço.", "erro")
+                return redirect(url_for("editar", peca_id=peca_id))
+            p.codigo = (request.form.get("codigo") or p.codigo).strip()
+            p.descricao = descricao
+            p.categoria = categoria
+            p.fornecedora_id = int(request.form.get("fornecedora"))
+            p.comissao_pct = int(request.form.get("comissao", 40))
+            p.preco = preco
+            p.status = request.form.get("status", p.status)
+            db.session.commit()
+            flash(f"★ Peça {p.codigo} atualizada", "ok")
+            return redirect(url_for("estoque"))
+        return render_template(
+            "editar.html", peca=p,
+            fornecedoras=Fornecedora.query.all(),
+            categorias=CATEGORIAS, preco_arara=PRECO_ARARA,
+            active="estoque",
+        )
+
+    # ── Deletar peça ──────────────────────────────────────────────────────
+    @app.route("/pecas/<int:peca_id>/deletar", methods=["POST"])
+    def deletar(peca_id):
+        p = db.session.get(Peca, peca_id)
+        if p is None:
+            abort(404)
+        codigo = p.codigo
+        db.session.delete(p)
+        db.session.commit()
+        flash(f"Peça {codigo} removida.", "ok")
+        return redirect(url_for("estoque"))
 
     # ── Nova fornecedora (modal) ──────────────────────────────────────────
     @app.route("/fornecedora/nova", methods=["POST"])

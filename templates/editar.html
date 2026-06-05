@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block titlebit %} · editar peça{% endblock %}
+
+{% block content %}
+<div class="wrap" style="max-width:760px">
+  <div class="halftone"></div>
+
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:12px">
+    <div>
+      <span class="eyebrow">editar peça</span>
+      <div class="script" style="font-size:34px;margin-top:4px">{{ peca.codigo }} ★</div>
+    </div>
+    <a class="btn btn-ghost btn-sm" href="{{ url_for('estoque') }}">← voltar ao estoque</a>
+  </div>
+
+  <form method="post" action="{{ url_for('editar', peca_id=peca.id) }}" style="margin-top:24px">
+    <div style="display:flex;flex-direction:column;gap:16px">
+
+      <div style="display:grid;grid-template-columns:160px 1fr;gap:14px">
+        <div class="field">
+          <label class="flabel">código</label>
+          <input class="input mono" name="codigo" value="{{ peca.codigo }}"/>
+        </div>
+        <div class="field">
+          <label class="flabel">descrição *</label>
+          <input class="input" name="descricao" value="{{ peca.descricao }}" required/>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="flabel">categoria *</label>
+        <div class="chips">
+          {% for c in categorias %}
+            <button type="button" class="chip {{ 'on' if peca.categoria==c }}"
+                    data-val="{{ c }}" onclick="pickCat(this,'{{ c }}')">{{ c }}</button>
+          {% endfor %}
+        </div>
+        <input type="hidden" name="categoria" id="categoria" value="{{ peca.categoria }}" required/>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 160px;gap:14px">
+        <div class="field">
+          <label class="flabel">fornecedora *</label>
+          <select class="select" name="fornecedora" id="fornecedora" onchange="onForn()">
+            {% for f in fornecedoras %}
+              <option value="{{ f.id }}" data-com="{{ f.comissao_padrao }}"
+                      {{ 'selected' if f.id==peca.fornecedora_id }}>{{ f.nome }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label class="flabel">preço (R$) *</label>
+          <input class="input mono" name="preco" id="preco"
+                 value="{{ peca.preco }}" inputmode="decimal" oninput="recalc()"/>
+        </div>
+      </div>
+
+      <div class="arara-flag" id="arara" style="display:none">
+        <span style="color:var(--pink)">★</span>
+        <span>regra da arara: peça de R$5 →
+          <b style="color:var(--pink)">100% vai pra fornecedora</b>
+          (a % abaixo é ignorada).
+        </span>
+      </div>
+
+      <div class="field">
+        <label class="flabel">comissão do brechó</label>
+        <div class="chips" id="com-chips">
+          {% for c in [0, 40, 50, 60, 100] %}
+            <button type="button" class="chip {{ 'on' if peca.comissao_pct==c }}"
+                    data-val="{{ c }}" onclick="pickCom(this,{{ c }})">{{ c }}%</button>
+          {% endfor %}
+        </div>
+        <input type="hidden" name="comissao" id="comissao" value="{{ peca.comissao_pct }}"/>
+        <span class="fhint" id="com-hint"></span>
+      </div>
+
+      <div class="field">
+        <label class="flabel">status</label>
+        <div class="chips">
+          {% for s in ['disponivel', 'reservado', 'vendido'] %}
+            <button type="button" class="chip {{ 'on' if peca.status==s }}"
+                    data-val="{{ s }}" onclick="pickStatus(this,'{{ s }}')">{{ s }}</button>
+          {% endfor %}
+        </div>
+        <input type="hidden" name="status" id="status" value="{{ peca.status }}"/>
+      </div>
+    </div>
+
+    <div style="margin-top:22px;border-top:1.5px solid var(--line);padding-top:18px;
+                display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px">
+      <div style="display:flex;gap:26px;flex-wrap:wrap">
+        <div>
+          <span class="mono" style="font-size:10px;color:var(--ink3)">najú fica com</span>
+          <div style="font-weight:700;font-size:22px" id="prev-naju">—</div>
+        </div>
+        <div>
+          <span class="mono" style="font-size:10px;color:var(--ink3)">pix p/ fornecedora</span>
+          <div style="font-weight:700;font-size:22px;color:var(--pink)" id="prev-forn">—</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;align-items:center">
+        <a class="btn btn-ghost" href="{{ url_for('estoque') }}">cancelar</a>
+        <button class="btn btn-pink btn-lg" type="submit">salvar alterações ★</button>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const PRECO_ARARA = {{ preco_arara }};
+  let comissao = {{ peca.comissao_pct }};
+
+  function setChipGroup(container, btn) {
+    container.querySelectorAll('.chip').forEach(c => c.classList.remove('on'));
+    btn.classList.add('on');
+  }
+  function pickCat(btn, v)    { setChipGroup(btn.parentElement, btn); document.getElementById('categoria').value = v; }
+  function pickStatus(btn, v) { setChipGroup(btn.parentElement, btn); document.getElementById('status').value = v; }
+  function pickCom(btn, v) {
+    setChipGroup(btn.parentElement, btn);
+    comissao = v; document.getElementById('comissao').value = v;
+    updateHint(); recalc();
+  }
+  function onForn() {
+    const opt = document.getElementById('fornecedora').selectedOptions[0];
+    const com = parseInt(opt.dataset.com);
+    document.querySelectorAll('#com-chips .chip')
+      .forEach(c => c.classList.toggle('on', parseInt(c.dataset.val) === com));
+    comissao = com; document.getElementById('comissao').value = com;
+    updateHint(); recalc();
+  }
+  function updateHint() {
+    const h = document.getElementById('com-hint');
+    if (comissao === 0)        h.textContent = '0% → lucro 100% pra fornecedora';
+    else if (comissao === 100) h.textContent = '100% fica com o brechó (peça própria)';
+    else                       h.textContent = 'fornecedora recebe ' + (100 - comissao) + '%';
+  }
+  function recalc() {
+    const preco = parseFloat(
+      (document.getElementById('preco').value || '0').replace(',', '.')
+    ) || 0;
+    const arara = preco === PRECO_ARARA;
+    document.getElementById('arara').style.display = arara ? 'flex' : 'none';
+    document.getElementById('com-chips').style.opacity = arara ? 0.4 : 1;
+    const comEf = arara ? 0 : comissao;
+    document.getElementById('prev-naju').textContent = brl(preco * comEf / 100);
+    document.getElementById('prev-forn').textContent = brl(preco * (100 - comEf) / 100);
+  }
+  function brl(n) {
+    return 'R$ ' + n.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+  }
+  updateHint(); recalc();
+</script>
+{% endblock %}

@@ -56,6 +56,7 @@
         <th class="right">comissão</th>
         <th class="right">preço</th>
         <th>status</th>
+        <th></th>
       </tr>
     </thead>
     <tbody>
@@ -73,10 +74,20 @@
           </td>
           <td class="right" style="font-weight:700;color:var(--pink);white-space:nowrap">{{ p.preco|brl }}</td>
           <td><span class="spill {{ p.status }}">{{ p.status }}</span></td>
+          <td style="white-space:nowrap">
+            <a class="btn btn-sm btn-ghost" href="{{ url_for('editar', peca_id=p.id) }}"
+               style="height:32px;font-size:12px">editar</a>
+            <form method="post" action="{{ url_for('deletar', peca_id=p.id) }}"
+                  style="display:inline"
+                  onsubmit="return confirm('Excluir {{ p.codigo }}?')">
+              <button class="btn btn-sm" type="submit"
+                      style="height:32px;font-size:12px;border-color:var(--rust);color:var(--rust)">✕</button>
+            </form>
+          </td>
         </tr>
       {% else %}
         <tr>
-          <td colspan="7" style="text-align:center;padding:50px 0">
+          <td colspan="8" style="text-align:center;padding:50px 0">
             <span class="script" style="font-size:30px;color:var(--ink2)">nenhuma peça com esse filtro…</span>
           </td>
         </tr>

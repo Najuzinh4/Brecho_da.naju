@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import re
+import unicodedata
 from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
 
@@ -79,13 +81,31 @@ def fmt_brl(valor):
     return f"R$ {s}"
 
 
-def proximo_codigo():
+def _inicial(nome: str) -> str:
+    """Retorna a primeira letra do nome sem acento, maiúscula."""
+    sem_acento = unicodedata.normalize("NFD", nome or "")
+    sem_acento = "".join(c for c in sem_acento if unicodedata.category(c) != "Mn")
+    for ch in sem_acento:
+        if ch.isalpha():
+            return ch.upper()
+    return "X"
+
+
+def proximo_codigo(fornecedora_id=None):
+    """Gera o próximo código com a inicial da fornecedora: N001, T002…"""
+    inicial = "N"
+    if fornecedora_id:
+        f = db.session.get(Fornecedora, fornecedora_id)
+        if f:
+            inicial = _inicial(f.nome)
+
+    padrao = re.compile(rf"^{re.escape(inicial)}(\d+)$", re.IGNORECASE)
     maior = 0
     for p in Peca.query.all():
-        digits = "".join(ch for ch in (p.codigo or "") if ch.isdigit())
-        if digits:
-            maior = max(maior, int(digits))
-    return f"NJ-{maior + 1:03d}"
+        m = padrao.match(p.codigo or "")
+        if m:
+            maior = max(maior, int(m.group(1)))
+    return f"{inicial}{maior + 1:03d}"
 
 
 def build_relatorio():
