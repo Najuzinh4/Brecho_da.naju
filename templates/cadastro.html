@@ -6,138 +6,169 @@
   <div class="halftone"></div>
 
   {# ── Toggle peça / fornecedora ── #}
-  <div style="display:flex;gap:10px;margin-bottom:28px">
-    <button class="btn btn-pink" id="btn-peca"   onclick="showSection('peca')">★ nova peça</button>
-    <button class="btn btn-ghost" id="btn-forn"  onclick="showSection('forn')">+ nova fornecedora</button>
+  <div style="display:flex;gap:10px;margin-bottom:28px" id="toggle-bar">
+    <button class="btn btn-pink"  id="btn-peca" onclick="showSection('peca')">★ nova peça</button>
+    <button class="btn btn-ghost" id="btn-forn" onclick="showSection('forn')">+ fornecedoras</button>
   </div>
 
   {# ══════════════════════ SEÇÃO: PEÇA ══════════════════════ #}
   <div id="section-peca">
-    <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:12px">
-      <div>
-        <span class="eyebrow">cadastrar peça</span>
-        <div class="script" style="font-size:34px;margin-top:4px;white-space:nowrap">achadinho novo ★</div>
+    {% if not fornecedoras %}
+      <div style="border:1.5px solid var(--pink);padding:20px 24px;background:rgba(255,46,147,0.05)">
+        <div style="font-weight:700;font-size:16px">Nenhuma fornecedora cadastrada ainda.</div>
+        <div style="margin-top:6px;font-size:14px;color:var(--ink2)">
+          Cadastre pelo menos uma fornecedora antes de adicionar peças.
+        </div>
+        <button class="btn btn-pink btn-sm" style="margin-top:14px" onclick="showSection('forn')">
+          + cadastrar fornecedora
+        </button>
       </div>
-      <span class="mono" style="font-size:11px;color:var(--ink3)">código sugerido · {{ proximo }}</span>
-    </div>
-
-    <form method="post" action="{{ url_for('cadastro') }}" style="margin-top:24px" id="form-peca">
-      <div style="display:flex;flex-direction:column;gap:16px">
-
-        <div style="display:grid;grid-template-columns:160px 1fr;gap:14px">
-          <div class="field">
-            <label class="flabel">código</label>
-            <input class="input mono" name="codigo" value="{{ proximo }}"/>
-          </div>
-          <div class="field">
-            <label class="flabel">descrição *</label>
-            <input class="input" name="descricao"
-                   placeholder="ex: Vestido slip cetim tam M" required/>
-          </div>
+    {% else %}
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:12px">
+        <div>
+          <span class="eyebrow">cadastrar peça</span>
+          <div class="script" style="font-size:34px;margin-top:4px;white-space:nowrap">achadinho novo ★</div>
         </div>
+      </div>
 
-        <div class="field">
-          <label class="flabel">categoria *</label>
-          <div class="chips">
-            {% for c in categorias %}
-              <button type="button" class="chip" data-val="{{ c }}"
-                      onclick="pickCat(this,'{{ c }}')">{{ c }}</button>
-            {% endfor %}
+      <form method="post" action="{{ url_for('cadastro') }}" style="margin-top:24px" id="form-peca">
+        <div style="display:flex;flex-direction:column;gap:16px">
+
+          <div style="display:grid;grid-template-columns:140px 1fr;gap:14px">
+            <div class="field">
+              <label class="flabel">código (auto)</label>
+              {# readonly: gerado automaticamente pela inicial da fornecedora #}
+              <input class="input mono" name="codigo" id="codigo" value=""
+                     readonly style="background:var(--zebra);cursor:default;color:var(--ink2)"/>
+            </div>
+            <div class="field">
+              <label class="flabel">descrição *</label>
+              <input class="input" name="descricao"
+                     placeholder="ex: Vestido slip cetim tam M" required/>
+            </div>
           </div>
-          <input type="hidden" name="categoria" id="categoria" required/>
-        </div>
 
-        <div style="display:grid;grid-template-columns:1fr 160px;gap:14px">
           <div class="field">
-            <label class="flabel">fornecedora *</label>
-            <select class="select" name="fornecedora" id="fornecedora" onchange="onForn()">
-              {% for f in fornecedoras %}
-                <option value="{{ f.id }}" data-com="{{ f.comissao_padrao }}">{{ f.nome }}</option>
+            <label class="flabel">categoria *</label>
+            <div class="chips">
+              {% for c in categorias %}
+                <button type="button" class="chip" data-val="{{ c }}"
+                        onclick="pickCat(this,'{{ c }}')">{{ c }}</button>
               {% endfor %}
-            </select>
+            </div>
+            <input type="hidden" name="categoria" id="categoria" required/>
           </div>
+
+          <div style="display:grid;grid-template-columns:1fr 160px;gap:14px">
+            <div class="field">
+              <label class="flabel">fornecedora *</label>
+              <select class="select" name="fornecedora" id="fornecedora" onchange="onForn()">
+                {% for f in fornecedoras %}
+                  <option value="{{ f.id }}" data-com="{{ f.comissao_padrao }}">{{ f.nome }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="field">
+              <label class="flabel">preço (R$) *</label>
+              <input class="input mono" name="preco" id="preco"
+                     placeholder="0,00" inputmode="decimal" oninput="onPreco()"/>
+            </div>
+          </div>
+
+          <div class="arara-flag" id="arara" style="display:none">
+            <span style="color:var(--pink)">★</span>
+            <span>regra da arara: peça de R$5 →
+              <b style="color:var(--pink)">100% vai pra fornecedora</b>
+              (a % abaixo é ignorada).
+            </span>
+          </div>
+
           <div class="field">
-            <label class="flabel">preço (R$) *</label>
-            <input class="input mono" name="preco" id="preco"
-                   placeholder="0,00" inputmode="decimal" oninput="onPreco()"/>
+            <label class="flabel">comissão do brechó</label>
+            <div class="chips" id="com-chips">
+              {% for c in [0, 40, 50, 60, 100] %}
+                <button type="button" class="chip {{ 'on' if c==40 }}"
+                        data-val="{{ c }}" onclick="pickCom(this,{{ c }})">{{ c }}%</button>
+              {% endfor %}
+            </div>
+            <input type="hidden" name="comissao" id="comissao" value="40"/>
+            <span class="fhint" id="com-hint">fornecedora recebe 60%</span>
+          </div>
+
+          <div class="field">
+            <label class="flabel">status inicial</label>
+            <div class="chips">
+              <button type="button" class="chip on" data-val="disponivel"
+                      onclick="pickStatus(this,'disponivel')">disponivel</button>
+              <button type="button" class="chip" data-val="reservado"
+                      onclick="pickStatus(this,'reservado')">reservado</button>
+            </div>
+            <input type="hidden" name="status" id="status" value="disponivel"/>
           </div>
         </div>
 
-        <div class="arara-flag" id="arara" style="display:none">
-          <span style="color:var(--pink)">★</span>
-          <span>regra da arara: peça de R$5 →
-            <b style="color:var(--pink)">100% vai pra fornecedora</b>
-            (a % abaixo é ignorada).
-          </span>
-        </div>
-
-        <div class="field">
-          <label class="flabel">comissão do brechó</label>
-          <div class="chips" id="com-chips">
-            {% for c in [0, 40, 50, 60, 100] %}
-              <button type="button" class="chip {{ 'on' if c==40 }}"
-                      data-val="{{ c }}" onclick="pickCom(this,{{ c }})">{{ c }}%</button>
-            {% endfor %}
+        <div style="margin-top:22px;border-top:1.5px solid var(--line);padding-top:18px;
+                    display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px">
+          <div style="display:flex;gap:26px;flex-wrap:wrap">
+            <div>
+              <span class="mono" style="font-size:10px;color:var(--ink3)">najú fica com</span>
+              <div style="font-weight:700;font-size:22px" id="prev-naju">R$ 0,00</div>
+            </div>
+            <div>
+              <span class="mono" style="font-size:10px;color:var(--ink3)">pix p/ fornecedora</span>
+              <div style="font-weight:700;font-size:22px;color:var(--pink)" id="prev-forn">R$ 0,00</div>
+            </div>
           </div>
-          <input type="hidden" name="comissao" id="comissao" value="40"/>
-          <span class="fhint" id="com-hint">fornecedora recebe 60%</span>
-        </div>
-
-        <div class="field">
-          <label class="flabel">status inicial</label>
-          <div class="chips">
-            <button type="button" class="chip on" data-val="disponivel"
-                    onclick="pickStatus(this,'disponivel')">disponivel</button>
-            <button type="button" class="chip" data-val="reservado"
-                    onclick="pickStatus(this,'reservado')">reservado</button>
-          </div>
-          <input type="hidden" name="status" id="status" value="disponivel"/>
-        </div>
-      </div>
-
-      <div style="margin-top:22px;border-top:1.5px solid var(--line);padding-top:18px;
-                  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px">
-        <div style="display:flex;gap:26px;flex-wrap:wrap">
-          <div>
-            <span class="mono" style="font-size:10px;color:var(--ink3)">najú fica com</span>
-            <div style="font-weight:700;font-size:22px" id="prev-naju">R$ 0,00</div>
-          </div>
-          <div>
-            <span class="mono" style="font-size:10px;color:var(--ink3)">pix p/ fornecedora</span>
-            <div style="font-weight:700;font-size:22px;color:var(--pink)" id="prev-forn">R$ 0,00</div>
+          <div style="display:flex;gap:12px;align-items:center">
+            <a class="btn btn-ghost" href="{{ url_for('estoque') }}">ver estoque</a>
+            <button class="btn btn-pink btn-lg" type="submit">salvar peça ★</button>
           </div>
         </div>
-        <div style="display:flex;gap:12px;align-items:center">
-          <a class="btn btn-ghost" href="{{ url_for('estoque') }}">ver estoque</a>
-          <button class="btn btn-pink btn-lg" type="submit">salvar peça ★</button>
-        </div>
-      </div>
-    </form>
+      </form>
+    {% endif %}
   </div>
 
-  {# ══════════════════════ SEÇÃO: FORNECEDORA ══════════════════════ #}
+  {# ══════════════════════ SEÇÃO: FORNECEDORAS ══════════════════════ #}
   <div id="section-forn" style="display:none">
-    <div>
-      <span class="eyebrow">cadastrar fornecedora</span>
-      <div class="script" style="font-size:34px;margin-top:4px;white-space:nowrap">nova parceira ★</div>
-    </div>
+    <span class="eyebrow">fornecedoras</span>
+    <div class="script" style="font-size:34px;margin-top:4px;margin-bottom:20px">nova parceira ★</div>
 
-    <form method="post" action="{{ url_for('nova_fornecedora') }}" style="margin-top:24px">
+    {# Lista de fornecedoras existentes #}
+    {% if fornecedoras %}
+      <div style="border:1.5px solid var(--line);margin-bottom:28px">
+        {% for f in fornecedoras %}
+          <div style="display:flex;align-items:center;justify-content:space-between;
+                      padding:12px 16px;{{ 'border-top:1px solid var(--line)' if not loop.first }}">
+            <div>
+              <span style="font-weight:700">{{ f.nome }}</span>
+              <span class="mono" style="font-size:11px;color:var(--ink3);margin-left:10px">
+                pix: {{ f.pix }} · {{ f.comissao_padrao }}% brechó
+              </span>
+            </div>
+            <form method="post" action="{{ url_for('deletar_fornecedora', forn_id=f.id) }}"
+                  onsubmit="return confirm('Excluir {{ f.nome }}? Só funciona se ela não tiver peças.')">
+              <button class="btn btn-sm" type="submit"
+                      style="height:32px;font-size:12px;border-color:var(--rust);color:var(--rust)">✕</button>
+            </form>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {# Form nova fornecedora #}
+    <form method="post" action="{{ url_for('nova_fornecedora') }}">
       <div style="display:flex;flex-direction:column;gap:16px;max-width:500px">
-
         <div class="field">
           <label class="flabel">nome *</label>
           <input class="input" name="nome"
-                 placeholder="ex: Mãe / Dona Cleide / Cacá Vintage" required/>
+                 placeholder="ex: Mãe / Cacá Vintage" required/>
         </div>
-
         <div class="field">
           <label class="flabel">chave pix</label>
           <input class="input mono" name="pix"
                  placeholder="ex: (11) 99999-0000 · pode preencher depois"/>
           <span class="fhint">telefone, e-mail, cpf ou chave aleatória</span>
         </div>
-
         <div class="field">
           <label class="flabel">comissão padrão do brechó</label>
           <div class="chips" id="forn-com-chips">
@@ -149,15 +180,11 @@
           <input type="hidden" name="comissao" id="forn-com" value="40"/>
           <span class="fhint">0% = lucro 100% pra fornecedora (ex: peças da sua mãe)</span>
         </div>
-
         <div style="border-left:3px solid var(--pink);padding-left:12px" class="fhint">
-          ★ peças de R$5 sempre vão 100% pra fornecedora, independente da % combinada.
+          ★ peças de R$5 sempre vão 100% pra fornecedora, independente da %.
         </div>
       </div>
-
-      <div style="margin-top:22px;border-top:1.5px solid var(--line);padding-top:18px;
-                  display:flex;gap:12px">
-        <button type="button" class="btn btn-ghost" onclick="showSection('peca')">← voltar</button>
+      <div style="margin-top:22px;border-top:1.5px solid var(--line);padding-top:18px;display:flex;gap:12px">
         <button type="submit" class="btn btn-pink btn-lg">salvar fornecedora ★</button>
       </div>
     </form>
@@ -182,7 +209,6 @@
     container.querySelectorAll('.chip').forEach(c => c.classList.remove('on'));
     btn.classList.add('on');
   }
-
   function pickCat(btn, v)    { setChipGroup(btn.parentElement, btn); document.getElementById('categoria').value = v; }
   function pickStatus(btn, v) { setChipGroup(btn.parentElement, btn); document.getElementById('status').value = v; }
   function pickCom(btn, v) {
@@ -196,13 +222,15 @@
   }
 
   function onForn() {
-    const opt = document.getElementById('fornecedora').selectedOptions[0];
+    const sel = document.getElementById('fornecedora');
+    if (!sel) return;
+    const opt = sel.selectedOptions[0];
     const com = parseInt(opt.dataset.com);
     document.querySelectorAll('#com-chips .chip')
       .forEach(c => c.classList.toggle('on', parseInt(c.dataset.val) === com));
     comissao = com; document.getElementById('comissao').value = com;
     updateHint(); recalc();
-    // atualiza código com a inicial da fornecedora
+    // busca o próximo código com a inicial da fornecedora
     fetch('/api/codigo-preview', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -214,17 +242,16 @@
 
   function updateHint() {
     const h = document.getElementById('com-hint');
+    if (!h) return;
     if (comissao === 0)        h.textContent = '0% → lucro 100% pra fornecedora';
     else if (comissao === 100) h.textContent = '100% fica com o brechó (peça própria)';
     else                       h.textContent = 'fornecedora recebe ' + (100 - comissao) + '%';
   }
-
   function onPreco() { recalc(); }
-
   function recalc() {
-    const preco = parseFloat(
-      (document.getElementById('preco').value || '0').replace(',', '.')
-    ) || 0;
+    const precoEl = document.getElementById('preco');
+    if (!precoEl) return;
+    const preco = parseFloat((precoEl.value || '0').replace(',', '.')) || 0;
     const arara = preco === PRECO_ARARA;
     document.getElementById('arara').style.display = arara ? 'flex' : 'none';
     document.getElementById('com-chips').style.opacity = arara ? 0.4 : 1;
@@ -232,16 +259,15 @@
     document.getElementById('prev-naju').textContent = brl(preco * comEf / 100);
     document.getElementById('prev-forn').textContent = brl(preco * (100 - comEf) / 100);
   }
-
   function brl(n) {
     return 'R$ ' + n.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
   }
 
-  // se voltou pra cá depois de salvar fornecedora, fica na aba de fornecedora
-  {% if request.referrer and 'fornecedora' in (request.referrer or '') %}
+  // ao carregar: abre a seção certa e busca o código inicial
+  {% if request.path.endswith('#forn') or (request.referrer and 'fornecedora' in (request.referrer or '')) %}
     showSection('forn');
+  {% else %}
+    onForn();
   {% endif %}
-
-  onForn();
 </script>
 {% endblock %}

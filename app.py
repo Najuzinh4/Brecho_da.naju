@@ -205,7 +205,7 @@ def register_routes(app):
         flash(f"Peça {codigo} removida.", "ok")
         return redirect(url_for("estoque"))
 
-    # ── Nova fornecedora (modal) ──────────────────────────────────────────
+    # ── Nova fornecedora ──────────────────────────────────────────────────
     @app.route("/fornecedora/nova", methods=["POST"])
     def nova_fornecedora():
         nome = (request.form.get("nome") or "").strip()
@@ -220,7 +220,22 @@ def register_routes(app):
         db.session.add(f)
         db.session.commit()
         flash(f"★ Fornecedora {f.nome} cadastrada", "ok")
-        return redirect(request.referrer or url_for("cadastro"))
+        return redirect(url_for("cadastro") + "#forn")
+
+    # ── Deletar fornecedora ───────────────────────────────────────────────
+    @app.route("/fornecedora/<int:forn_id>/deletar", methods=["POST"])
+    def deletar_fornecedora(forn_id):
+        f = db.session.get(Fornecedora, forn_id)
+        if f is None:
+            abort(404)
+        if f.pecas:
+            flash(f"Não é possível excluir {f.nome}: ela tem peças cadastradas.", "erro")
+            return redirect(url_for("cadastro") + "#forn")
+        nome = f.nome
+        db.session.delete(f)
+        db.session.commit()
+        flash(f"Fornecedora {nome} removida.", "ok")
+        return redirect(url_for("cadastro") + "#forn")
 
     # ── Relatório / fechamento ────────────────────────────────────────────
     @app.route("/relatorio")
