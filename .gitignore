@@ -4,10 +4,6 @@ venv/
 __pycache__/
 *.pyc
 
-# Banco SQLite (gerado ao rodar)
-brecho.db
-*.db
-
 # Excel legado
 pecas.xlsx
 
