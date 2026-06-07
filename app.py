@@ -10,10 +10,12 @@ Abre em http://127.0.0.1:5000
 No iPad (mesma rede Wi-Fi): http://IP-DO-NOTEBOOK:5000
 """
 
+import csv
+import io
 import os
 from datetime import datetime
 from flask import (Flask, render_template, request, redirect,
-                   url_for, flash, abort, jsonify)
+                   url_for, flash, abort, jsonify, Response)
 from models import (db, Fornecedora, Peca, CATEGORIAS, STATUS,
                     PRECO_ARARA, fmt_brl, proximo_codigo, build_relatorio)
 
@@ -266,6 +268,30 @@ def register_routes(app):
         return render_template(
             "pdf_fechamento.html", r=r, linhas=[linha],
             single=linha["fornecedora"], agora=datetime.now()
+        )
+
+    # ── Exportar estoque como CSV ─────────────────────────────────────────
+    @app.route("/exportar")
+    def exportar():
+        pecas = Peca.query.order_by(Peca.codigo).all()
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(["codigo", "descricao", "categoria", "fornecedora",
+                    "comissao_pct", "comissao_efetiva", "preco",
+                    "fica_naju", "pix_fornecedora", "status", "vendido_em"])
+        for p in pecas:
+            w.writerow([
+                p.codigo, p.descricao, p.categoria,
+                p.fornecedora.nome if p.fornecedora else "",
+                p.comissao_pct, p.comissao_efetiva, p.preco,
+                p.fica_naju, p.pix_fornecedora, p.status,
+                p.vendido_em.strftime("%d/%m/%Y %H:%M") if p.vendido_em else "",
+            ])
+        nome = f"brecho_naju_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
+        return Response(
+            "﻿" + buf.getvalue(),  # BOM para Excel abrir acentos certo
+            mimetype="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={nome}"}
         )
 
     # ── Reset (volta aos dados de exemplo) ────────────────────────────────
